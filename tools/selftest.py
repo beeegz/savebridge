@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests synthétiques : round-trip Wii U 1.5 <-> Switch + refus 1.6 -> Wii U."""
+"""Synthetic tests: round-trip, version guard, nested root, unsupported."""
 import filecmp, struct, subprocess, sys, tempfile, zlib
 from pathlib import Path
 
@@ -30,6 +30,14 @@ for f in ["option.sav", "0/game_data.sav", "0/trackblock00.sav", "0/caption.jpg"
 (t / "sw16/0").mkdir(parents=True)
 (t / "sw16/option.sav").write_bytes(sav("<", 0x471E))
 (t / "sw16/0/game_data.sav").write_bytes(sav("<", 0x471E))
-assert run("auto", str(t / "sw16"), str(t / "x")) == 2, "le downgrade 1.6 aurait dû être refusé"
+assert run("auto", str(t / "sw16"), str(t / "x")) == 3, "1.6 -> Wii U must be refused (code 3)"
 assert run("--force", "auto", str(t / "sw16"), str(t / "y")) == 0
+# Save imbriquée (ex. mlc01/.../80000001) + dossier sans save
+nested = t / "deep/mlc01/usr/save/00050000/101C9500/user/80000001"
+nested.parent.mkdir(parents=True)
+import shutil; shutil.copytree(t / "wiiu", nested)
+assert run("auto", str(t / "deep"), str(t / "deep_out")) == 0
+assert (t / "deep_out/option.sav").exists(), "output must start at save root"
+(t / "empty").mkdir()
+assert run("auto", str(t / "empty"), str(t / "e_out")) == 4, "unsupported must return 4"
 print("selftest OK")

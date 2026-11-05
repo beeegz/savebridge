@@ -82,6 +82,20 @@ class Botw final : public IGameConverter {
 public:
   const char* id() const override { return "botw"; }
   const char* name() const override { return "Zelda: Breath of the Wild"; }
+  const char* switchTitleId() const override { return "01007EF00011E000"; }
+  const char* wiiuTitleIds() const override { return "101C9500 (EUR), 101C9400 (USA), 101C9300 (JPN)"; }
+
+  // Racine = premier dossier (parcours en largeur) contenant option.sav
+  fs::path findRoot(const fs::path& dir) const override {
+    std::vector<fs::path> q{dir};
+    for (size_t i = 0; i < q.size(); ++i) {
+      std::error_code ec;
+      if (fs::is_regular_file(q[i] / "option.sav", ec)) return q[i];
+      for (auto& e : fs::directory_iterator(q[i], ec))
+        if (e.is_directory(ec)) q.push_back(e.path());
+    }
+    return {};
+  }
 
   // Détection sur le tag de version (endian-dépendant) de option.sav / game_data.sav
   static Platform detectBuf(const std::vector<uint8_t>& d, const Ver** ver = nullptr) {
@@ -91,15 +105,9 @@ public:
     return Platform::Unknown;
   }
 
-  Platform detect(const fs::path& dir) const override {
-    for (auto& e : fs::recursive_directory_iterator(dir)) {
-      const auto fn = e.path().filename();
-      if (fn == "option.sav" || fn == "game_data.sav") {
-        std::vector<uint8_t> d;
-        if (readFile(e.path(), d)) return detectBuf(d);
-      }
-    }
-    return Platform::Unknown;
+  Platform detect(const fs::path& root) const override {
+    std::vector<uint8_t> d;
+    return readFile(root / "option.sav", d) ? detectBuf(d) : Platform::Unknown;
   }
 
   bool convert(const fs::path& in, const fs::path& out, Platform target,
@@ -107,7 +115,7 @@ public:
     bool generated = false;
     const auto strHashes = loadFlags(opt.flagsFile, generated);
     if (!generated)
-      rep.warnings.push_back("botw_string_flags.txt absent : liste de secours (incomplète) utilisée.");
+      rep.warnings.push_back("string flag list not provided: built-in fallback list used");
 
     // 1) Contrôle des versions avant toute écriture
     for (auto& e : fs::recursive_directory_iterator(in)) {
@@ -117,13 +125,13 @@ public:
       const Platform src = detectBuf(d, &v);
       const std::string rel = fs::relative(e.path(), in).string();
       if (src == Platform::Unknown) {
-        rep.warnings.push_back("version inconnue: " + rel);
-        if (!opt.force) return false;
+        rep.warnings.push_back("unknown save version: " + rel);
+        if (!opt.force) { rep.versionBlocked = true; return false; }
         continue;
       }
       if (target == Platform::WiiU && v->rank > kWiiUMaxRank) {
-        rep.warnings.push_back(rel + " : save v" + v->name + " > Wii U 1.5 (downgrade non supporté).");
-        if (!opt.force) return false;
+        rep.warnings.push_back(rel + ": save v" + v->name + " > Wii U max 1.5 (downgrade)");
+        if (!opt.force) { rep.versionBlocked = true; return false; }
       }
     }
 
@@ -135,13 +143,13 @@ public:
       const std::string fn = e.path().filename().string();
 
       std::vector<uint8_t> d;
-      if (!readFile(e.path(), d)) { rep.warnings.push_back("lecture: " + rel.string()); return false; }
+      if (!readFile(e.path(), d)) { rep.warnings.push_back("read error: " + rel.string()); return false; }
 
       if (e.path().extension() != ".sav") { // caption.jpg, etc.
         writeFile(dst, d); ++rep.copied; continue;
       }
       if (d.size() % 4 || d.size() < 0x0C) {
-        rep.warnings.push_back("taille invalide: " + rel.string()); return false;
+        rep.warnings.push_back("invalid size: " + rel.string()); return false;
       }
 
       if (isTrackblock(fn)) {
@@ -151,7 +159,7 @@ public:
       } else {
         const Platform src = detectBuf(d);
         if (src == Platform::Unknown) {
-          rep.warnings.push_back("format inconnu: " + rel.string()); return false;
+          rep.warnings.push_back("unknown format: " + rel.string()); return false;
         }
         if (src == target) { writeFile(dst, d); ++rep.copied; continue; }
         const Endian se = src == Platform::WiiU ? Endian::Big : Endian::Little;
@@ -164,10 +172,10 @@ public:
         }
         // Vérif : le résultat doit être reconnu comme plateforme cible
         if (detectBuf(d) != target) {
-          rep.warnings.push_back("vérification échouée: " + rel.string()); return false;
+          rep.warnings.push_back("verification failed: " + rel.string()); return false;
         }
       }
-      if (!writeFile(dst, d)) { rep.warnings.push_back("écriture: " + rel.string()); return false; }
+      if (!writeFile(dst, d)) { rep.warnings.push_back("write error: " + rel.string()); return false; }
       ++rep.converted;
     }
     return true;

@@ -6,7 +6,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayDeque;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -53,18 +52,5 @@ final class Zips {
                 zos.closeEntry();
             }
         }
-    }
-
-    /** Cherche le dossier qui contient option.sav (peu importe la profondeur). */
-    static File findSaveRoot(File dir) {
-        ArrayDeque<File> q = new ArrayDeque<>();
-        q.add(dir);
-        while (!q.isEmpty()) {
-            File d = q.poll();
-            if (new File(d, "option.sav").isFile()) return d;
-            File[] kids = d.listFiles();
-            if (kids != null) for (File k : kids) if (k.isDirectory()) q.add(k);
-        }
-        return null;
     }
 }

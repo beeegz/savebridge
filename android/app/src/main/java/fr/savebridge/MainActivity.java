@@ -13,6 +13,7 @@ import android.os.Bundle;
 import android.provider.DocumentsContract;
 import android.provider.DocumentsContract.Document;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -32,23 +33,20 @@ import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    // Arborescence créée automatiquement
     static final String APP_DIR = "SaveBridge";
-    static final String IN_DIR = "1 - Dépose ta save ici";
-    static final String OUT_DIR = "2 - Saves converties";
-    static final String BOTW_SWITCH_ID = "01007EF00011E000"; // dossier attendu par l'import Eden
+    private static final int REQ_SETUP = 1, REQ_FLAGS = 2, REQ_ZIP = 3, REQ_FOLDER = 4;
 
-    private static final int REQ_SETUP = 1, REQ_FLAGS = 2, REQ_ADD = 3;
-
-    // Couleurs
     private static final int C_BG = 0xFFF4F1EA, C_CARD = 0xFFFFFFFF, C_TEXT = 0xFF1E2A2F,
-            C_MUTED = 0xFF66737A, C_ACCENT = 0xFF1F8A70, C_OK = 0xFFE3F4EC, C_ERR = 0xFFFBE4E1;
+            C_MUTED = 0xFF66737A, C_ACCENT = 0xFF1F8A70, C_OK = 0xFFE3F4EC, C_ERR = 0xFFFBE4E1,
+            C_UPDATE = 0xFFE6EEFB;
 
     private SharedPreferences prefs;
-    private Uri tree;          // dossier parent choisi par l'utilisateur
-    private String inId, outId; // ids des sous-dossiers SaveBridge
-    private Uri pendingImport; // zip reçu via "Ouvrir avec" avant la configuration
+    private Uri tree;            // dossier parent choisi (ex. Documents)
+    private String inId, outId;  // sous-dossiers SaveBridge
+    private Uri pendingZip;      // zip reçu avant la configuration
     private boolean busy;
+    private Updater.Release update;
+    private boolean updateChecked;
 
     private LinearLayout content;
     private float dp;
@@ -63,8 +61,7 @@ public class MainActivity extends Activity {
 
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        int p = px(16);
-        content.setPadding(p, px(24), p, p);
+        content.setPadding(px(16), px(24), px(16), px(16));
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(C_BG);
         sv.addView(content);
@@ -83,9 +80,10 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (!busy) render(null);
+        checkUpdate();
     }
 
-    // ---------- Fichier reçu via "Ouvrir avec" / "Partager" ----------
+    // ---------- "Ouvrir avec" / "Partager" un zip ----------
     private void handleIntent(Intent i) {
         if (i == null) return;
         Uri u = null;
@@ -93,32 +91,33 @@ public class MainActivity extends Activity {
         else if (Intent.ACTION_SEND.equals(i.getAction())) u = i.getParcelableExtra(Intent.EXTRA_STREAM);
         if (u == null) return;
         setIntent(new Intent());
-        if (tree == null) { pendingImport = u; return; }
-        importAndConvert(u);
+        if (tree == null) { pendingZip = u; return; }
+        importZip(u);
     }
 
     // ---------- Écrans ----------
     private void render(Result result) {
         content.removeAllViews();
         header();
+        if (update != null) updateCard();
         if (tree == null || !ensureFolders()) { setupScreen(); return; }
-
         if (result != null) resultCard(result);
 
         LinearLayout drop = card(C_CARD);
-        drop.addView(text("📥  Dépose ta sauvegarde ici", 18, true, C_TEXT));
-        drop.addView(text("Documents › " + APP_DIR + " › " + IN_DIR, 14, false, C_ACCENT));
-        drop.addView(text("Copie dedans le dossier de ta save (Cemu : « 80000001 ») "
-                + "ou un zip exporté depuis Eden, puis reviens ici.", 14, false, C_MUTED));
-        drop.addView(button("➕  Ajouter un zip depuis le téléphone", false, v -> {
+        drop.addView(text(getString(R.string.drop_title), 18, true, C_TEXT));
+        drop.addView(text(getString(R.string.drop_path, inName()), 14, false, C_ACCENT));
+        drop.addView(text(getString(R.string.drop_hint), 14, false, C_MUTED));
+        drop.addView(button(getString(R.string.btn_pick_folder), true,
+                v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_FOLDER)));
+        drop.addView(button(getString(R.string.btn_pick_zip), false, v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("application/zip");
-            startActivityForResult(i, REQ_ADD);
+            startActivityForResult(i, REQ_ZIP);
         }));
         content.addView(drop);
 
-        content.addView(text("Tes sauvegardes", 18, true, C_TEXT));
+        content.addView(text(getString(R.string.saves_title), 18, true, C_TEXT));
         List<Saf.Entry> items;
         try {
             items = Saf.list(getContentResolver(), tree, inId);
@@ -132,34 +131,31 @@ public class MainActivity extends Activity {
             shown++;
             LinearLayout c = card(C_CARD);
             c.addView(text((e.dir ? "📁  " : "🗜️  ") + e.name, 16, true, C_TEXT));
-            c.addView(button("✨  Convertir", true, v -> convert(e)));
+            c.addView(button(getString(R.string.btn_convert), true, v -> convert(tree, e)));
             content.addView(c);
         }
         if (shown == 0) {
             LinearLayout c = card(C_CARD);
-            c.addView(text("Rien pour l'instant 👀\nAjoute une sauvegarde dans le dossier, elle apparaîtra ici.",
-                    14, false, C_MUTED));
+            c.addView(text(getString(R.string.empty), 14, false, C_MUTED));
             content.addView(c);
         }
-        content.addView(button("🔄  Actualiser", false, v -> render(null)));
+        content.addView(button(getString(R.string.btn_refresh), false, v -> render(null)));
         advanced();
     }
 
     private void header() {
-        TextView t = text("SaveBridge 🗡️", 28, true, C_TEXT);
-        content.addView(t);
-        content.addView(text("Zelda: Breath of the Wild · Wii U ⇄ Switch", 14, false, C_MUTED));
-        space(12);
+        content.addView(text(getString(R.string.app_name), 28, true, C_TEXT));
+        content.addView(text(getString(R.string.subtitle), 14, false, C_MUTED));
+        content.addView(text(getString(R.string.supported_games, String.join(", ", Native.supportedGames())),
+                13, false, C_MUTED));
+        space(8);
     }
 
     private void setupScreen() {
         LinearLayout c = card(C_CARD);
-        c.addView(text("👋  Bienvenue !", 20, true, C_TEXT));
-        c.addView(text("Je vais créer un dossier « " + APP_DIR + " » avec deux sous-dossiers :\n\n"
-                + "📥  " + IN_DIR + "\n📤  " + OUT_DIR + "\n\n"
-                + "Sur l'écran suivant, choisis « Documents » puis touche « Utiliser ce dossier ».",
-                15, false, C_TEXT));
-        c.addView(button("📂  Créer mon dossier SaveBridge", true, v -> {
+        c.addView(text(getString(R.string.welcome_title), 20, true, C_TEXT));
+        c.addView(text(getString(R.string.welcome_text, inName(), outName()), 15, false, C_TEXT));
+        c.addView(button(getString(R.string.btn_setup), true, v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
             i.putExtra(DocumentsContract.EXTRA_INITIAL_URI, DocumentsContract.buildDocumentUri(
                     "com.android.externalstorage.documents", "primary:Documents"));
@@ -170,40 +166,42 @@ public class MainActivity extends Activity {
 
     private void advanced() {
         space(16);
-        content.addView(text("Options avancées", 14, true, C_MUTED));
-        File flags = flagsFile();
-        content.addView(text("Liste des flags : " + (flags.exists() ? "importée ✅" : "intégrée (suffisante en général)"),
+        content.addView(text(getString(R.string.advanced), 14, true, C_MUTED));
+        content.addView(text(getString(flagsFile().exists() ? R.string.flags_imported : R.string.flags_builtin),
                 13, false, C_MUTED));
-        content.addView(button("Importer botw_string_flags.txt", false, v -> {
+        content.addView(button(getString(R.string.btn_import_flags), false, v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("text/plain");
             startActivityForResult(i, REQ_FLAGS);
         }));
         CheckBox force = new CheckBox(this);
-        force.setText("Forcer (ignorer le contrôle de version)");
+        force.setText(getString(R.string.force));
         force.setTextColor(C_MUTED);
         force.setChecked(prefs.getBoolean("force", false));
         force.setOnCheckedChangeListener((cb, on) -> prefs.edit().putBoolean("force", on).apply());
         content.addView(force);
-        content.addView(button("Changer de dossier", false, v -> {
+        content.addView(button(getString(R.string.btn_change_folder), false, v -> {
             prefs.edit().remove("tree").apply();
             tree = null;
             render(null);
         }));
+        content.addView(text(getString(R.string.version_label, versionName()), 12, false, C_MUTED));
     }
 
     private void resultCard(Result r) {
         LinearLayout c = card(r.ok ? C_OK : C_ERR);
-        c.addView(text(r.ok ? "✅  C'est prêt !" : "❌  Ça n'a pas marché", 20, true, C_TEXT));
+        c.addView(text(getString(r.ok ? R.string.result_ok : R.string.result_fail), 20, true, C_TEXT));
         c.addView(text(r.message, 15, false, C_TEXT));
-        TextView log = text(r.log, 12, false, C_MUTED);
-        log.setTypeface(Typeface.MONOSPACE);
-        log.setTextIsSelectable(true);
-        log.setVisibility(r.ok ? View.GONE : View.VISIBLE);
-        c.addView(button("Détails", false, v -> log.setVisibility(
-                log.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE)));
-        c.addView(log);
+        if (!r.log.isEmpty()) {
+            TextView log = text(r.log, 12, false, C_MUTED);
+            log.setTypeface(Typeface.MONOSPACE);
+            log.setTextIsSelectable(true);
+            log.setVisibility(r.ok ? View.GONE : View.VISIBLE);
+            c.addView(button(getString(R.string.details), false, v -> log.setVisibility(
+                    log.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE)));
+            c.addView(log);
+        }
         content.addView(c);
     }
 
@@ -211,21 +209,75 @@ public class MainActivity extends Activity {
         content.removeAllViews();
         header();
         LinearLayout c = card(C_CARD);
-        c.addView(text("⏳  " + what, 18, true, C_TEXT));
-        c.addView(text("Ne ferme pas l'application…", 14, false, C_MUTED));
+        c.addView(text(what, 18, true, C_TEXT));
+        c.addView(text(getString(R.string.dont_close), 14, false, C_MUTED));
         content.addView(c);
     }
 
+    // ---------- Mises à jour ----------
+    private void checkUpdate() {
+        if (updateChecked) return;
+        updateChecked = true;
+        final String current = versionName();
+        new Thread(() -> {
+            try {
+                Updater.Release r = Updater.check(current);
+                if (r != null) runOnUiThread(() -> { update = r; if (!busy) render(null); });
+            } catch (Exception ignored) { } // hors ligne : pas grave
+        }).start();
+    }
+
+    private void updateCard() {
+        LinearLayout c = card(C_UPDATE);
+        c.addView(text(getString(R.string.update_available, update.version), 17, true, C_TEXT));
+        String notes = update.notes == null ? "" : update.notes.trim();
+        if (!notes.isEmpty()) c.addView(text(notes, 13, false, C_MUTED));
+        c.addView(button(getString(R.string.btn_update), true, v -> {
+            if (!getPackageManager().canRequestPackageInstalls()) {
+                startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:" + getPackageName())));
+                android.widget.Toast.makeText(this, R.string.update_allow, android.widget.Toast.LENGTH_LONG).show();
+                return;
+            }
+            busy = true;
+            progress(getString(R.string.update_downloading));
+            final String url = update.apkUrl;
+            new Thread(() -> {
+                try {
+                    Updater.install(this, url);
+                    runOnUiThread(() -> { busy = false; render(null); });
+                } catch (Exception e) {
+                    done(new Result(false, getString(R.string.update_failed, e.getMessage()), e.toString()));
+                }
+            }).start();
+        }));
+        content.addView(c);
+    }
+
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "0";
+        }
+    }
+
     // ---------- Dossiers ----------
+    // Noms traduits fixés à la création : changer la langue ne recrée pas de dossiers.
+    private String inName() { return prefs.getString("in_name", getString(R.string.folder_in)); }
+    private String outName() { return prefs.getString("out_name", getString(R.string.folder_out)); }
+
     private boolean ensureFolders() {
         try {
             ContentResolver cr = getContentResolver();
             String rootId = DocumentsContract.getTreeDocumentId(tree);
             boolean fresh = !Saf.exists(cr, tree, rootId, APP_DIR);
             String app = Saf.dir(cr, tree, rootId, APP_DIR);
-            inId = Saf.dir(cr, tree, app, IN_DIR);
-            outId = Saf.dir(cr, tree, app, OUT_DIR);
-            if (fresh) Saf.writeText(cr, Saf.doc(tree, app), "LISEZ-MOI.txt", README);
+            inId = Saf.dir(cr, tree, app, inName());
+            outId = Saf.dir(cr, tree, app, outName());
+            prefs.edit().putString("in_name", inName()).putString("out_name", outName()).apply();
+            if (fresh) Saf.writeText(cr, Saf.doc(tree, app), "README.txt",
+                    getString(R.string.readme, inName(), outName()));
             return true;
         } catch (Exception e) { // permission perdue, dossier supprimé…
             prefs.edit().remove("tree").apply();
@@ -239,26 +291,36 @@ public class MainActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (res != RESULT_OK || data == null || data.getData() == null) return;
         Uri u = data.getData();
-        if (req == REQ_SETUP) {
-            getContentResolver().takePersistableUriPermission(u,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            tree = u;
-            prefs.edit().putString("tree", u.toString()).apply();
-            if (pendingImport != null) { Uri p = pendingImport; pendingImport = null; importAndConvert(p); }
-            else render(null);
-        } else if (req == REQ_FLAGS) {
-            try (InputStream is = getContentResolver().openInputStream(u);
-                 OutputStream os = new FileOutputStream(flagsFile())) {
-                Saf.pipe(is, os);
-            } catch (IOException e) {
-                render(new Result(false, "Import de la liste impossible.", e.toString()));
-                return;
+        switch (req) {
+            case REQ_SETUP:
+                getContentResolver().takePersistableUriPermission(u,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                tree = u;
+                prefs.edit().putString("tree", u.toString()).apply();
+                if (pendingZip != null) { Uri p = pendingZip; pendingZip = null; importZip(p); }
+                break;
+            case REQ_FOLDER: { // dossier choisi n'importe où : conversion directe
+                String id = DocumentsContract.getTreeDocumentId(u);
+                String name = id.substring(id.lastIndexOf('/') + 1);
+                name = name.substring(name.indexOf(':') + 1);
+                if (name.isEmpty()) name = "save";
+                convert(u, new Saf.Entry(id, name, true));
+                break;
             }
-            render(null);
-        } else if (req == REQ_ADD) {
-            importAndConvert(u);
+            case REQ_ZIP:
+                importZip(u);
+                break;
+            case REQ_FLAGS:
+                try (InputStream is = getContentResolver().openInputStream(u);
+                     OutputStream os = new FileOutputStream(flagsFile())) {
+                    Saf.pipe(is, os);
+                } catch (IOException e) {
+                    busy = true; // affiche l'erreur au lieu du rendu de onResume
+                    done(new Result(false, getString(R.string.err_read), e.toString()));
+                }
+                break;
         }
-        // onResume() redessine après le retour d'un sélecteur
+        // onResume() redessine ensuite si rien n'est en cours
     }
 
     private File flagsFile() { return new File(getFilesDir(), "botw_string_flags.txt"); }
@@ -269,11 +331,11 @@ public class MainActivity extends Activity {
         Result(boolean ok, String message, String log) { this.ok = ok; this.message = message; this.log = log; }
     }
 
-    /** Copie un zip externe dans la boîte de dépôt, puis le convertit. */
-    private void importAndConvert(Uri src) {
-        if (tree == null || !ensureFolders()) { pendingImport = src; render(null); return; }
+    /** Copie un zip externe dans le dossier de dépôt puis le convertit. */
+    private void importZip(Uri src) {
+        if (tree == null || !ensureFolders()) { pendingZip = src; render(null); return; }
         busy = true;
-        progress("Copie du fichier…");
+        progress(getString(R.string.copying));
         new Thread(() -> {
             Result r;
             try {
@@ -284,90 +346,85 @@ public class MainActivity extends Activity {
                 try (InputStream is = cr.openInputStream(src); OutputStream os = cr.openOutputStream(dst)) {
                     Saf.pipe(is, os);
                 }
-                r = doConvert(new Saf.Entry(DocumentsContract.getDocumentId(dst), name, false));
+                r = doConvert(tree, new Saf.Entry(DocumentsContract.getDocumentId(dst), name, false));
             } catch (Exception e) {
-                r = new Result(false, "Le fichier n'a pas pu être lu.", e.toString());
+                r = new Result(false, getString(R.string.err_read), e.toString());
             }
-            finish(r);
+            done(r);
         }).start();
     }
 
-    private void convert(Saf.Entry e) {
+    private void convert(Uri srcTree, Saf.Entry e) {
+        if (tree == null || !ensureFolders()) { render(null); return; }
         busy = true;
-        progress("Conversion de « " + e.name + " »…");
+        progress(getString(R.string.working, e.name));
         new Thread(() -> {
             Result r;
             try {
-                r = doConvert(e);
+                r = doConvert(srcTree, e);
             } catch (Exception ex) {
-                r = new Result(false, "Erreur inattendue.", ex.toString());
+                r = new Result(false, getString(R.string.err_read), ex.toString());
             }
-            finish(r);
+            done(r);
         }).start();
     }
 
-    private void finish(Result r) {
+    private void done(Result r) {
         runOnUiThread(() -> { busy = false; render(r); });
     }
 
-    private Result doConvert(Saf.Entry e) throws IOException {
+    private Result doConvert(Uri srcTree, Saf.Entry e) throws IOException {
         ContentResolver cr = getContentResolver();
         File work = new File(getCacheDir(), "work");
         Saf.deleteLocal(work);
         File src = new File(work, "src"), out = new File(work, "out");
-        if (!src.mkdirs()) throw new IOException("Cache indisponible");
-
+        if (!src.mkdirs()) throw new IOException("cache");
         try {
-            if (e.dir) Saf.download(cr, tree, e.id, src);
-            else Zips.unzip(cr.openInputStream(Saf.doc(tree, e.id)), src);
-
-            File root = Zips.findSaveRoot(src);
-            if (root == null)
-                return new Result(false, "Je ne trouve pas de sauvegarde BotW là-dedans (fichier option.sav absent).\n"
-                        + "Cemu : prends le dossier « 80000001 ». Eden : utilise « Exporter » dans les données de sauvegarde.", "");
+            if (e.dir) Saf.download(cr, srcTree, e.id, src);
+            else Zips.unzip(cr.openInputStream(Saf.doc(srcTree, e.id)), src);
 
             File flags = flagsFile();
-            String res = Native.convert(root.getAbsolutePath(), out.getAbsolutePath(),
+            Native.Result n = Native.run(src.getAbsolutePath(), out.getAbsolutePath(),
                     flags.exists() ? flags.getAbsolutePath() : "", prefs.getBoolean("force", false));
-            int nl = res.indexOf('\n');
-            int code = Integer.parseInt(res.substring(0, nl));
-            String log = res.substring(nl + 1);
-            if (code != 0) return new Result(false, friendlyError(log), log);
+            switch (n.code) {
+                case Native.OK: break;
+                case Native.UNSUPPORTED:
+                    return new Result(false, getString(R.string.err_unsupported,
+                            String.join(", ", Native.supportedGames())), n.log);
+                case Native.VERSION_BLOCKED:
+                    return new Result(false, getString(R.string.err_version), n.log);
+                default:
+                    return new Result(false, getString(R.string.err_failed), n.log);
+            }
 
-            boolean toSwitch = log.contains("-> Switch");
-            String base = strip(e.name) + (toSwitch ? " → Switch " : " → Wii U ")
-                    + new SimpleDateFormat("dd-MM HH'h'mm", Locale.FRANCE).format(new Date());
+            boolean toSwitch = n.toSwitch();
+            String target = toSwitch ? "Switch" : "Wii U";
+            String base = strip(e.name) + " → " + target + " "
+                    + new SimpleDateFormat("yyyy-MM-dd HH'h'mm", Locale.ROOT).format(new Date());
             Uri dest = Saf.newFile(cr, Saf.doc(tree, outId), Document.MIME_TYPE_DIR, base);
 
-            String msg;
+            StringBuilder msg = new StringBuilder();
+            msg.append(getString(R.string.out_detected, n.get("game"),
+                    toSwitch ? "Wii U" : "Switch", target)).append("\n");
+            msg.append(getString(R.string.out_location, outName(), base)).append("\n\n");
             if (toSwitch) {
-                try (OutputStream os = cr.openOutputStream(Saf.newFile(cr, dest, "application/zip", "Pour Eden.zip"))) {
-                    Zips.zip(out, BOTW_SWITCH_ID, os);
+                String zipName = getString(R.string.out_eden_zip), jksv = getString(R.string.out_jksv);
+                try (OutputStream os = cr.openOutputStream(Saf.newFile(cr, dest, "application/zip", zipName))) {
+                    Zips.zip(out, n.get("switch_id"), os); // structure attendue par l'import Eden
                 }
-                Saf.upload(cr, out, Saf.newFile(cr, dest, Document.MIME_TYPE_DIR, "Pour Switch (JKSV)"));
-                msg = "Dossier : " + OUT_DIR + " › " + base + "\n\n"
-                        + "🎮 Eden : appui long sur BotW › Données de sauvegarde › Importer › choisis « Pour Eden.zip ».\n\n"
-                        + "🕹️ Switch : copie « Pour Switch (JKSV) » dans sdmc:/JKSV/<BotW>/ puis Restore dans JKSV.\n\n"
-                        + "💡 Exporte d'abord ta save actuelle pour la garder en secours.";
+                Saf.upload(cr, out, Saf.newFile(cr, dest, Document.MIME_TYPE_DIR, jksv));
+                msg.append(getString(R.string.hint_eden, zipName)).append("\n\n");
+                msg.append(getString(R.string.hint_jksv, jksv)).append("\n\n");
             } else {
-                Saf.upload(cr, out, Saf.newFile(cr, dest, Document.MIME_TYPE_DIR, "Pour Cemu (Wii U)"));
-                msg = "Dossier : " + OUT_DIR + " › " + base + "\n\n"
-                        + "🖥️ Cemu : copie le contenu de « Pour Cemu (Wii U) » dans\n"
-                        + "mlc01/usr/save/00050000/101C9500/user/80000001/\n(101C9400 pour la version USA).";
+                String cemu = getString(R.string.out_cemu);
+                Saf.upload(cr, out, Saf.newFile(cr, dest, Document.MIME_TYPE_DIR, cemu));
+                msg.append(getString(R.string.hint_cemu, cemu, n.get("wiiu_ids"))).append("\n\n");
             }
-            return new Result(true, msg, log);
+            msg.append(getString(R.string.hint_backup));
+            return new Result(true, msg.toString(), n.log);
         } finally {
             Saf.deleteLocal(work);
         }
-    }
-
-    private static String friendlyError(String log) {
-        if (log.contains("downgrade"))
-            return "Cette sauvegarde est en version 1.6 : la Wii U ne va que jusqu'à la 1.5.\n"
-                    + "Tu peux cocher « Forcer » dans les options avancées (à tes risques).";
-        if (log.contains("non reconnu") || log.contains("version inconnue"))
-            return "Ce n'est pas une sauvegarde BotW reconnue.";
-        return "La conversion a échoué. Touche « Détails » et envoie le journal.";
     }
 
     private static String strip(String n) {
@@ -378,15 +435,14 @@ public class MainActivity extends Activity {
         try (Cursor c = cr.query(u, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
             if (c != null && c.moveToFirst() && c.getString(0) != null) return c.getString(0);
         } catch (Exception ignored) { }
-        return "sauvegarde.zip";
+        return "save.zip";
     }
 
-    // ---------- Petits composants UI ----------
+    // ---------- Composants UI ----------
     private int px(int v) { return Math.round(v * dp); }
 
     private void space(int h) {
-        View v = new View(this);
-        content.addView(v, new LinearLayout.LayoutParams(1, px(h)));
+        content.addView(new View(this), new LinearLayout.LayoutParams(1, px(h)));
     }
 
     private TextView text(String s, int sp, boolean bold, int color) {
@@ -433,16 +489,4 @@ public class MainActivity extends Activity {
         b.setOnClickListener(l);
         return b;
     }
-
-    static final String README =
-            "SaveBridge — Zelda BotW Wii U <-> Switch\n\n"
-            + "1. Mets ta sauvegarde dans « " + IN_DIR + " » :\n"
-            + "   - Cemu : le dossier 80000001 (mlc01/usr/save/00050000/101C9500/user/80000001)\n"
-            + "   - Eden : le zip créé par « Exporter » (Données de sauvegarde)\n"
-            + "2. Ouvre SaveBridge et touche « Convertir ».\n"
-            + "3. Le résultat arrive dans « " + OUT_DIR + " » :\n"
-            + "   - Pour Eden.zip           -> Eden : Données de sauvegarde > Importer\n"
-            + "   - Pour Switch (JKSV)      -> console Switch via JKSV\n"
-            + "   - Pour Cemu (Wii U)       -> dossier 80000001 de Cemu\n\n"
-            + "Garde toujours une copie de ta sauvegarde d'origine.\n";
 }

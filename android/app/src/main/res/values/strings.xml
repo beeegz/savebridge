@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">SaveBridge</string>
+    <string name="subtitle">Wii U ⇄ Switch save converter</string>
+    <string name="supported_games">Supported games: %1$s</string>
+    <string name="drop_title">📥  Add your save</string>
+    <string name="drop_path">Documents › SaveBridge › %1$s</string>
+    <string name="drop_hint">Put a save folder or a .zip in this folder, then come back. Or pick one directly:</string>
+    <string name="btn_pick_folder">📂  Choose a folder</string>
+    <string name="btn_pick_zip">🗜️  Choose a .zip</string>
+    <string name="saves_title">Your saves</string>
+    <string name="empty">Nothing yet 👀\nAdd a save to the folder above and it will show up here.</string>
+    <string name="btn_convert">✨  Convert</string>
+    <string name="btn_refresh">🔄  Refresh</string>
+    <string name="advanced">Advanced options</string>
+    <string name="flags_imported">String flag list: imported ✅</string>
+    <string name="flags_builtin">String flag list: built-in</string>
+    <string name="btn_import_flags">Import a string flag list (.txt)</string>
+    <string name="force">Force (skip the version check)</string>
+    <string name="btn_change_folder">Change folder</string>
+    <string name="welcome_title">👋  Welcome!</string>
+    <string name="welcome_text">SaveBridge will create a \"SaveBridge\" folder containing:\n\n📥  %1$s\n📤  %2$s\n\nOn the next screen, open \"Documents\" and tap \"Use this folder\".</string>
+    <string name="btn_setup">📂  Create my SaveBridge folder</string>
+    <string name="result_ok">✅  Done!</string>
+    <string name="result_fail">❌  It didn\'t work</string>
+    <string name="details">Details</string>
+    <string name="working">⏳  Converting \"%1$s\"…</string>
+    <string name="copying">⏳  Copying…</string>
+    <string name="dont_close">Keep the app open…</string>
+    <string name="out_location">Saved in: %1$s › %2$s</string>
+    <string name="out_detected">Detected: %1$s (%2$s → %3$s)</string>
+    <string name="hint_eden">🎮 Eden: long-press the game › Save data › Import › choose \"%1$s\".</string>
+    <string name="hint_jksv">🕹️ Switch (JKSV): copy \"%1$s\" to sdmc:/JKSV/&lt;game&gt;/ then Restore.</string>
+    <string name="hint_cemu">🖥️ Cemu: copy the content of \"%1$s\" to\nmlc01/usr/save/00050000/&lt;ID&gt;/user/80000001/\nID: %2$s</string>
+    <string name="hint_backup">💡 Back up your current save first.</string>
+    <string name="err_unsupported">No supported save found here.\nSupported games: %1$s</string>
+    <string name="err_version">This save version can\'t go to the target platform (e.g. 1.6 → Wii U, max 1.5).\nYou can tick \"Force\" in the advanced options, at your own risk.</string>
+    <string name="err_failed">The conversion failed. Tap \"Details\" and share the log.</string>
+    <string name="err_read">The file or folder couldn\'t be read.</string>
+    <string name="folder_in">1 - Drop your save here</string>
+    <string name="folder_out">2 - Converted saves</string>
+    <string name="out_eden_zip">For Eden.zip</string>
+    <string name="out_jksv">For Switch (JKSV)</string>
+    <string name="out_cemu">For Cemu (Wii U)</string>
+    <string name="readme">SaveBridge — Wii U &lt;-&gt; Switch saves\n\n1. Put a save (folder or .zip) in \"%1$s\".\n2. Open SaveBridge and tap \"Convert\".\n3. Results go to \"%2$s\".\n\nAlways keep a copy of your original save.\n</string>
+    <string name="update_available">⬆️  Update available: %1$s</string>
+    <string name="btn_update">Install the update</string>
+    <string name="update_downloading">⏳  Downloading the update…</string>
+    <string name="update_failed">Update failed: %1$s</string>
+    <string name="update_allow">Allow SaveBridge to install apps, then tap again.</string>
+    <string name="version_label">Version %1$s</string>
+</resources>

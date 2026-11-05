@@ -2,7 +2,6 @@ name: build
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -24,20 +23,24 @@ jobs:
         with: { distribution: temurin, java-version: 17 }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.14.3" }
-      - name: Build APK
+      - name: Build APK (signé, clé fixe)
         working-directory: android
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon assembleRelease
+      - name: Version
+        id: v
+        run: echo "name=$(cat android/version.txt).${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: SaveBridge-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-      - name: Publier la Release "latest" (push sur main)
+          name: SaveBridge-${{ steps.v.outputs.name }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+      # Chaque push sur main = une release vX.Y.N -> l'app la propose comme mise à jour
+      - name: Publier la mise à jour
         if: github.ref == 'refs/heads/main'
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk SaveBridge.apk
-          gh release delete latest -y --cleanup-tag || true
-          gh release create latest SaveBridge.apk --target "$GITHUB_SHA" \
-            --title "SaveBridge (dernière version)" \
-            --notes "Convertisseur de sauvegardes Zelda BotW Wii U <-> Switch. Installer l'APK (autoriser les sources inconnues). Build ${GITHUB_SHA::7}."
+          cp android/app/build/outputs/apk/release/app-release.apk SaveBridge.apk
+          git log -1 --format=%B | grep -v -E '^(Co-Authored-By|Claude-Session):' > notes.txt
+          gh release delete latest -y --cleanup-tag 2>/dev/null || true
+          gh release create "v${{ steps.v.outputs.name }}" SaveBridge.apk --target "$GITHUB_SHA" \
+            --title "SaveBridge ${{ steps.v.outputs.name }}" --notes-file notes.txt --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

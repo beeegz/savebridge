@@ -9,27 +9,30 @@ namespace fs = std::filesystem;
 enum class Platform { WiiU, Switch, Unknown };
 
 struct Options {
-  bool force = false;      // ignore le contrôle de version
-  std::string flagsFile = "botw_string_flags.txt"; // liste des flags string
+  bool force = false;                                // ignore le contrôle de version
+  std::string flagsFile = "botw_string_flags.txt";   // données propres à un plugin
 };
 
 struct Report {
   int converted = 0, copied = 0;
+  bool versionBlocked = false; // conversion refusée pour cause de version
   std::vector<std::string> warnings;
 };
 
-// Un plugin par jeu : le format de save est propre à chaque titre.
+// Un plugin par jeu : chaque titre a son propre format de sauvegarde.
 class IGameConverter {
 public:
   virtual ~IGameConverter() = default;
   virtual const char* id() const = 0;
   virtual const char* name() const = 0;
-  // Détecte le jeu + la plateforme d'origine du dossier de save
-  virtual Platform detect(const fs::path& saveDir) const = 0;
-  // Convertit inDir -> outDir vers la plateforme 'target'
-  virtual bool convert(const fs::path& inDir, const fs::path& outDir,
-                       Platform target, const Options& opt,
-                       Report& rep) const = 0;
+  virtual const char* switchTitleId() const = 0;  // ex. 01007EF00011E000
+  virtual const char* wiiuTitleIds() const = 0;   // ex. "101C9500 (EUR), 101C9400 (USA)"
+  // Dossier racine de la save trouvé sous 'dir' (n'importe quelle profondeur), vide sinon
+  virtual fs::path findRoot(const fs::path& dir) const = 0;
+  // Plateforme d'origine d'un dossier racine
+  virtual Platform detect(const fs::path& root) const = 0;
+  virtual bool convert(const fs::path& root, const fs::path& outDir,
+                       Platform target, const Options& opt, Report& rep) const = 0;
 };
 
 namespace registry {
@@ -40,5 +43,5 @@ void registerBuiltins();
 }
 
 inline const char* toStr(Platform p) {
-  return p == Platform::WiiU ? "Wii U" : p == Platform::Switch ? "Switch" : "?";
+  return p == Platform::WiiU ? "wiiu" : p == Platform::Switch ? "switch" : "unknown";
 }
