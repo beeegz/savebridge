@@ -48,4 +48,6 @@
     <string name="update_failed">Aggiornamento non riuscito: %1$s</string>
     <string name="update_allow">Consenti a SaveBridge di installare app, poi riprova.</string>
     <string name="version_label">Versione %1$s</string>
+    <string name="err_folder">⚠️ Al momento la cartella SaveBridge non è leggibile.</string>
+    <string name="welcome_existing">Hai già una cartella SaveBridge? Selezionala (o la cartella che la contiene): non verrà ricreato nulla.</string>
 </resources>

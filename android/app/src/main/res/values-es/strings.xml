@@ -48,4 +48,6 @@
     <string name="update_failed">Error de actualización: %1$s</string>
     <string name="update_allow">Permite que SaveBridge instale aplicaciones y vuelve a intentarlo.</string>
     <string name="version_label">Versión %1$s</string>
+    <string name="err_folder">⚠️ No se puede leer la carpeta SaveBridge en este momento.</string>
+    <string name="welcome_existing">¿Ya tienes una carpeta SaveBridge? Selecciónala (o la carpeta que la contiene): no se volverá a crear nada.</string>
 </resources>

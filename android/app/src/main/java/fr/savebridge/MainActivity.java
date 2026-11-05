@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.UriPermission;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -56,8 +57,7 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         dp = getResources().getDisplayMetrics().density;
         prefs = getSharedPreferences("savebridge", MODE_PRIVATE);
-        String t = prefs.getString("tree", null);
-        tree = t == null ? null : Uri.parse(t);
+        tree = restoreTree();
 
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -100,7 +100,21 @@ public class MainActivity extends Activity {
         content.removeAllViews();
         header();
         if (update != null) updateCard();
-        if (tree == null || !ensureFolders()) { setupScreen(); return; }
+        if (tree == null) { setupScreen(); return; }
+        if (!ensureFolders()) {
+            if (tree == null) { setupScreen(); return; }
+            LinearLayout c = card(C_ERR);
+            c.addView(text(getString(R.string.err_folder), 16, true, C_TEXT));
+            c.addView(text(folderError == null ? "" : folderError, 12, false, C_MUTED));
+            c.addView(button(getString(R.string.btn_refresh), true, v -> render(null)));
+            c.addView(button(getString(R.string.btn_change_folder), false, v -> {
+                prefs.edit().remove("tree").apply();
+                tree = null;
+                render(null);
+            }));
+            content.addView(c);
+            return;
+        }
         if (result != null) resultCard(result);
 
         LinearLayout drop = card(C_CARD);
@@ -155,6 +169,7 @@ public class MainActivity extends Activity {
         LinearLayout c = card(C_CARD);
         c.addView(text(getString(R.string.welcome_title), 20, true, C_TEXT));
         c.addView(text(getString(R.string.welcome_text, inName(), outName()), 15, false, C_TEXT));
+        c.addView(text(getString(R.string.welcome_existing), 14, false, C_MUTED));
         c.addView(button(getString(R.string.btn_setup), true, v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
             i.putExtra(DocumentsContract.EXTRA_INITIAL_URI, DocumentsContract.buildDocumentUri(
@@ -267,21 +282,55 @@ public class MainActivity extends Activity {
     private String inName() { return prefs.getString("in_name", getString(R.string.folder_in)); }
     private String outName() { return prefs.getString("out_name", getString(R.string.folder_out)); }
 
+    private String folderError; // dernière erreur d'accès au dossier (affichée, jamais silencieuse)
+
+    /** Dossier mémorisé, ou à défaut un dossier dont Android a gardé l'autorisation. */
+    private Uri restoreTree() {
+        String t = prefs.getString("tree", null);
+        if (t != null) return Uri.parse(t);
+        for (UriPermission p : getContentResolver().getPersistedUriPermissions())
+            if (p.isWritePermission() && DocumentsContract.isTreeUri(p.getUri())) {
+                prefs.edit().putString("tree", p.getUri().toString()).apply();
+                return p.getUri();
+            }
+        return null;
+    }
+
+    private boolean hasPermission(Uri u) {
+        for (UriPermission p : getContentResolver().getPersistedUriPermissions())
+            if (p.getUri().equals(u) && p.isReadPermission() && p.isWritePermission()) return true;
+        return false;
+    }
+
     private boolean ensureFolders() {
+        folderError = null;
+        if (!hasPermission(tree)) { // autorisation réellement perdue : seul cas où on redemande
+            prefs.edit().remove("tree").apply();
+            tree = null;
+            return false;
+        }
         try {
             ContentResolver cr = getContentResolver();
             String rootId = DocumentsContract.getTreeDocumentId(tree);
-            boolean fresh = !Saf.exists(cr, tree, rootId, APP_DIR);
-            String app = Saf.dir(cr, tree, rootId, APP_DIR);
+            // Le dossier choisi peut être SaveBridge lui-même ou son parent (ex. Documents)
+            String last = rootId.substring(rootId.lastIndexOf('/') + 1);
+            last = last.substring(last.indexOf(':') + 1);
+            String app;
+            boolean fresh = false;
+            if (APP_DIR.equals(last)) {
+                app = rootId;
+            } else {
+                fresh = !Saf.exists(cr, tree, rootId, APP_DIR);
+                app = Saf.dir(cr, tree, rootId, APP_DIR);
+            }
             inId = Saf.dir(cr, tree, app, inName());
             outId = Saf.dir(cr, tree, app, outName());
             prefs.edit().putString("in_name", inName()).putString("out_name", outName()).apply();
             if (fresh) Saf.writeText(cr, Saf.doc(tree, app), "README.txt",
                     getString(R.string.readme, inName(), outName()));
             return true;
-        } catch (Exception e) { // permission perdue, dossier supprimé…
-            prefs.edit().remove("tree").apply();
-            tree = null;
+        } catch (Exception e) { // erreur passagère : on garde le dossier et on l'affiche
+            folderError = e.toString();
             return false;
         }
     }
@@ -293,8 +342,19 @@ public class MainActivity extends Activity {
         Uri u = data.getData();
         switch (req) {
             case REQ_SETUP:
-                getContentResolver().takePersistableUriPermission(u,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                try {
+                    getContentResolver().takePersistableUriPermission(u,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                } catch (SecurityException e) {
+                    busy = true;
+                    done(new Result(false, getString(R.string.err_read), e.toString()));
+                    break;
+                }
+                // Libère les anciennes autorisations de dossier SaveBridge (limite Android)
+                for (UriPermission p : getContentResolver().getPersistedUriPermissions())
+                    if (!p.getUri().equals(u))
+                        getContentResolver().releasePersistableUriPermission(p.getUri(),
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 tree = u;
                 prefs.edit().putString("tree", u.toString()).apply();
                 if (pendingZip != null) { Uri p = pendingZip; pendingZip = null; importZip(p); }

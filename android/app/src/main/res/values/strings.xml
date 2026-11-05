@@ -49,4 +49,6 @@
     <string name="update_failed">Update failed: %1$s</string>
     <string name="update_allow">Allow SaveBridge to install apps, then tap again.</string>
     <string name="version_label">Version %1$s</string>
+    <string name="err_folder">⚠️ The SaveBridge folder can\'t be read right now.</string>
+    <string name="welcome_existing">Already have a SaveBridge folder? Select it (or the folder that contains it): nothing will be recreated.</string>
 </resources>

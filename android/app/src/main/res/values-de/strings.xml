@@ -48,4 +48,6 @@
     <string name="update_failed">Update fehlgeschlagen: %1$s</string>
     <string name="update_allow">Erlaube SaveBridge, Apps zu installieren, und tippe erneut.</string>
     <string name="version_label">Version %1$s</string>
+    <string name="err_folder">⚠️ Der SaveBridge-Ordner kann gerade nicht gelesen werden.</string>
+    <string name="welcome_existing">Du hast schon einen SaveBridge-Ordner? Wähle ihn (oder den Ordner, der ihn enthält): Es wird nichts neu erstellt.</string>
 </resources>

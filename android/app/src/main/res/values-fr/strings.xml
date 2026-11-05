@@ -48,4 +48,6 @@
     <string name="update_failed">Échec de la mise à jour : %1$s</string>
     <string name="update_allow">Autorise SaveBridge à installer des applications, puis réessaie.</string>
     <string name="version_label">Version %1$s</string>
+    <string name="err_folder">⚠️ Le dossier SaveBridge est illisible pour le moment.</string>
+    <string name="welcome_existing">Tu as déjà un dossier SaveBridge ? Sélectionne-le (ou le dossier qui le contient) : rien ne sera recréé.</string>
 </resources>

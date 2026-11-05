@@ -48,4 +48,6 @@
     <string name="update_failed">Falha na atualização: %1$s</string>
     <string name="update_allow">Permita que o SaveBridge instale apps e toque de novo.</string>
     <string name="version_label">Versão %1$s</string>
+    <string name="err_folder">⚠️ Não é possível ler a pasta SaveBridge agora.</string>
+    <string name="welcome_existing">Já tem uma pasta SaveBridge? Selecione-a (ou a pasta que a contém): nada será recriado.</string>
 </resources>
