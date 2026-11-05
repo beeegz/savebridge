@@ -3,11 +3,26 @@
     <application
         android:label="SaveBridge"
         android:allowBackup="false"
-        android:theme="@android:style/Theme.Material.Light.DarkActionBar">
-        <activity android:name=".MainActivity" android:exported="true">
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- "Ouvrir avec SaveBridge" sur un zip -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/zip" />
+            </intent-filter>
+            <!-- "Partager" un zip vers SaveBridge -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/zip" />
             </intent-filter>
         </activity>
     </application>
