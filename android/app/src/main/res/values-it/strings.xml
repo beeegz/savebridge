@@ -50,4 +50,20 @@
     <string name="version_label">Versione %1$s</string>
     <string name="err_folder">⚠️ Al momento la cartella SaveBridge non è leggibile.</string>
     <string name="welcome_existing">Hai già una cartella SaveBridge? Selezionala (o la cartella che la contiene): non verrà ricreato nulla.</string>
+    <string name="res_created_switch">✅  Il tuo salvataggio Switch è pronto</string>
+    <string name="res_created_wiiu">✅  Il tuo salvataggio Wii U è pronto</string>
+    <string name="res_stats">%1$d file convertiti · %2$d copiati</string>
+    <string name="res_where">📁  Dove trovarlo</string>
+    <string name="res_files">Creato:</string>
+    <string name="item_eden">%1$s — da importare in Eden</string>
+    <string name="item_jksv">%1$s — per una console Switch (JKSV)</string>
+    <string name="item_cemu">%1$s — per Cemu</string>
+    <string name="res_next">👉  Prossimo passo</string>
+    <string name="steps_eden">1. Apri Eden.\n2. Tieni premuto il gioco › Dati di salvataggio › Importa.\n3. Scegli «%1$s» in:\n%2$s</string>
+    <string name="btn_share">📤  Condividi %1$s</string>
+    <string name="btn_save_as">💾  Salva lo zip altrove…</string>
+    <string name="btn_open_folder">📂  Apri la cartella</string>
+    <string name="btn_another">Converti un altro salvataggio</string>
+    <string name="saved_ok">Salvato ✅</string>
+    <string name="open_folder_fail">Apri il gestore file e vai in:\n%1$s</string>
 </resources>

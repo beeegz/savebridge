@@ -50,4 +50,20 @@
     <string name="version_label">Version %1$s</string>
     <string name="err_folder">⚠️ Der SaveBridge-Ordner kann gerade nicht gelesen werden.</string>
     <string name="welcome_existing">Du hast schon einen SaveBridge-Ordner? Wähle ihn (oder den Ordner, der ihn enthält): Es wird nichts neu erstellt.</string>
+    <string name="res_created_switch">✅  Dein Switch-Spielstand ist fertig</string>
+    <string name="res_created_wiiu">✅  Dein Wii-U-Spielstand ist fertig</string>
+    <string name="res_stats">%1$d Dateien konvertiert · %2$d kopiert</string>
+    <string name="res_where">📁  Wo du ihn findest</string>
+    <string name="res_files">Erstellt:</string>
+    <string name="item_eden">%1$s – zum Importieren in Eden</string>
+    <string name="item_jksv">%1$s – für eine Switch-Konsole (JKSV)</string>
+    <string name="item_cemu">%1$s – für Cemu</string>
+    <string name="res_next">👉  Nächster Schritt</string>
+    <string name="steps_eden">1. Öffne Eden.\n2. Spiel lange drücken › Speicherdaten › Importieren.\n3. Wähle „%1$s“ in:\n%2$s</string>
+    <string name="btn_share">📤  %1$s teilen</string>
+    <string name="btn_save_as">💾  Zip woanders speichern…</string>
+    <string name="btn_open_folder">📂  Ordner öffnen</string>
+    <string name="btn_another">Weiteren Spielstand konvertieren</string>
+    <string name="saved_ok">Gespeichert ✅</string>
+    <string name="open_folder_fail">Öffne deinen Dateimanager und gehe zu:\n%1$s</string>
 </resources>

@@ -22,6 +22,7 @@ import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -29,13 +30,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
     static final String APP_DIR = "SaveBridge";
-    private static final int REQ_SETUP = 1, REQ_FLAGS = 2, REQ_ZIP = 3, REQ_FOLDER = 4;
+    private static final int REQ_SETUP = 1, REQ_FLAGS = 2, REQ_ZIP = 3, REQ_FOLDER = 4, REQ_SAVE_ZIP = 5;
 
     private static final int C_BG = 0xFFF4F1EA, C_CARD = 0xFFFFFFFF, C_TEXT = 0xFF1E2A2F,
             C_MUTED = 0xFF66737A, C_ACCENT = 0xFF1F8A70, C_OK = 0xFFE3F4EC, C_ERR = 0xFFFBE4E1,
@@ -48,6 +52,7 @@ public class MainActivity extends Activity {
     private boolean busy;
     private Updater.Release update;
     private boolean updateChecked;
+    private Result lastResult; // reste affiché jusqu'à « Convertir une autre sauvegarde »
 
     private LinearLayout content;
     private float dp;
@@ -97,9 +102,11 @@ public class MainActivity extends Activity {
 
     // ---------- Écrans ----------
     private void render(Result result) {
+        if (result != null) lastResult = result;
         content.removeAllViews();
         header();
         if (update != null) updateCard();
+        if (lastResult != null) { resultScreen(lastResult); return; }
         if (tree == null) { setupScreen(); return; }
         if (!ensureFolders()) {
             if (tree == null) { setupScreen(); return; }
@@ -115,7 +122,6 @@ public class MainActivity extends Activity {
             content.addView(c);
             return;
         }
-        if (result != null) resultCard(result);
 
         LinearLayout drop = card(C_CARD);
         drop.addView(text(getString(R.string.drop_title), 18, true, C_TEXT));
@@ -204,20 +210,75 @@ public class MainActivity extends Activity {
         content.addView(text(getString(R.string.version_label, versionName()), 12, false, C_MUTED));
     }
 
-    private void resultCard(Result r) {
+    private void resultScreen(Result r) {
         LinearLayout c = card(r.ok ? C_OK : C_ERR);
-        c.addView(text(getString(r.ok ? R.string.result_ok : R.string.result_fail), 20, true, C_TEXT));
-        c.addView(text(r.message, 15, false, C_TEXT));
+        if (r.ok) {
+            c.addView(text(getString(r.toSwitch ? R.string.res_created_switch : R.string.res_created_wiiu),
+                    20, true, C_TEXT));
+            c.addView(text(r.detected, 14, false, C_TEXT));
+            if (!r.stats.isEmpty()) c.addView(text(r.stats, 13, false, C_MUTED));
+            space(c, 6);
+            c.addView(text(getString(R.string.res_files), 15, true, C_TEXT));
+            for (String item : r.created) c.addView(text("✅  " + item, 14, false, C_TEXT));
+            space(c, 6);
+            c.addView(text(getString(R.string.res_where), 15, true, C_TEXT));
+            TextView path = text(r.path, 13, false, C_ACCENT);
+            path.setTextIsSelectable(true);
+            c.addView(path);
+        } else {
+            c.addView(text(getString(R.string.result_fail), 20, true, C_TEXT));
+            c.addView(text(r.message, 15, false, C_TEXT));
+        }
+        content.addView(c);
+
+        if (r.ok) {
+            LinearLayout next = card(C_CARD);
+            next.addView(text(getString(R.string.res_next), 17, true, C_TEXT));
+            next.addView(text(r.message, 14, false, C_TEXT));
+            if (r.zip != null) {
+                next.addView(button(getString(R.string.btn_share, r.zipName), true, v -> shareZip(r)));
+                next.addView(button(getString(R.string.btn_save_as), false, v -> {
+                    Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("application/zip");
+                    i.putExtra(Intent.EXTRA_TITLE, r.zipName);
+                    startActivityForResult(i, REQ_SAVE_ZIP);
+                }));
+            }
+            if (r.folder != null)
+                next.addView(button(getString(R.string.btn_open_folder), false, v -> openFolder(r)));
+            content.addView(next);
+        }
+
         if (!r.log.isEmpty()) {
             TextView log = text(r.log, 12, false, C_MUTED);
             log.setTypeface(Typeface.MONOSPACE);
             log.setTextIsSelectable(true);
             log.setVisibility(r.ok ? View.GONE : View.VISIBLE);
-            c.addView(button(getString(R.string.details), false, v -> log.setVisibility(
+            content.addView(button(getString(R.string.details), false, v -> log.setVisibility(
                     log.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE)));
-            c.addView(log);
+            content.addView(log);
         }
-        content.addView(c);
+        content.addView(button(getString(R.string.btn_another), true, v -> { lastResult = null; render(null); }));
+    }
+
+    private void shareZip(Result r) {
+        Intent i = new Intent(Intent.ACTION_SEND);
+        i.setType("application/zip");
+        i.putExtra(Intent.EXTRA_STREAM, r.zip);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(i, r.zipName));
+    }
+
+    private void openFolder(Result r) {
+        Intent i = new Intent(Intent.ACTION_VIEW);
+        i.setDataAndType(r.folder, Document.MIME_TYPE_DIR);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivity(i);
+        } catch (Exception e) { // pas d'appli capable d'ouvrir un dossier : on indique le chemin
+            Toast.makeText(this, getString(R.string.open_folder_fail, r.path), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void progress(String what) {
@@ -251,7 +312,7 @@ public class MainActivity extends Activity {
             if (!getPackageManager().canRequestPackageInstalls()) {
                 startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                         Uri.parse("package:" + getPackageName())));
-                android.widget.Toast.makeText(this, R.string.update_allow, android.widget.Toast.LENGTH_LONG).show();
+                Toast.makeText(this, R.string.update_allow, Toast.LENGTH_LONG).show();
                 return;
             }
             busy = true;
@@ -370,6 +431,16 @@ public class MainActivity extends Activity {
             case REQ_ZIP:
                 importZip(u);
                 break;
+            case REQ_SAVE_ZIP:
+                if (lastResult == null || lastResult.zip == null) break;
+                try (InputStream is = getContentResolver().openInputStream(lastResult.zip);
+                     OutputStream os = getContentResolver().openOutputStream(u)) {
+                    Saf.pipe(is, os);
+                    Toast.makeText(this, R.string.saved_ok, Toast.LENGTH_SHORT).show();
+                } catch (IOException e) {
+                    Toast.makeText(this, e.toString(), Toast.LENGTH_LONG).show();
+                }
+                break;
             case REQ_FLAGS:
                 try (InputStream is = getContentResolver().openInputStream(u);
                      OutputStream os = new FileOutputStream(flagsFile())) {
@@ -388,6 +459,10 @@ public class MainActivity extends Activity {
     // ---------- Conversion ----------
     static final class Result {
         final boolean ok; final String message, log;
+        boolean toSwitch;
+        String detected = "", stats = "", path = "", zipName;
+        Uri folder, zip;
+        final List<String> created = new ArrayList<>();
         Result(boolean ok, String message, String log) { this.ok = ok; this.message = message; this.log = log; }
     }
 
@@ -463,25 +538,43 @@ public class MainActivity extends Activity {
                     + new SimpleDateFormat("yyyy-MM-dd HH'h'mm", Locale.ROOT).format(new Date());
             Uri dest = Saf.newFile(cr, Saf.doc(tree, outId), Document.MIME_TYPE_DIR, base);
 
+            String folderPath = "Documents › " + APP_DIR + " › " + outName() + " › " + base;
             StringBuilder msg = new StringBuilder();
-            msg.append(getString(R.string.out_detected, n.get("game"),
-                    toSwitch ? "Wii U" : "Switch", target)).append("\n");
-            msg.append(getString(R.string.out_location, outName(), base)).append("\n\n");
+            Result r;
+            List<String> created = new ArrayList<>();
+            Uri zipUri = null;
+            String zipName = null;
             if (toSwitch) {
-                String zipName = getString(R.string.out_eden_zip), jksv = getString(R.string.out_jksv);
-                try (OutputStream os = cr.openOutputStream(Saf.newFile(cr, dest, "application/zip", zipName))) {
+                zipName = getString(R.string.out_eden_zip);
+                String jksv = getString(R.string.out_jksv);
+                zipUri = Saf.newFile(cr, dest, "application/zip", zipName);
+                try (OutputStream os = cr.openOutputStream(zipUri)) {
                     Zips.zip(out, n.get("switch_id"), os); // structure attendue par l'import Eden
                 }
                 Saf.upload(cr, out, Saf.newFile(cr, dest, Document.MIME_TYPE_DIR, jksv));
-                msg.append(getString(R.string.hint_eden, zipName)).append("\n\n");
+                created.add(getString(R.string.item_eden, zipName));
+                created.add(getString(R.string.item_jksv, jksv + "/"));
+                msg.append(getString(R.string.steps_eden, zipName, folderPath)).append("\n\n");
                 msg.append(getString(R.string.hint_jksv, jksv)).append("\n\n");
             } else {
                 String cemu = getString(R.string.out_cemu);
                 Saf.upload(cr, out, Saf.newFile(cr, dest, Document.MIME_TYPE_DIR, cemu));
+                created.add(getString(R.string.item_cemu, cemu + "/"));
                 msg.append(getString(R.string.hint_cemu, cemu, n.get("wiiu_ids"))).append("\n\n");
             }
             msg.append(getString(R.string.hint_backup));
-            return new Result(true, msg.toString(), n.log);
+            r = new Result(true, msg.toString(), n.log);
+            r.toSwitch = toSwitch;
+            r.detected = getString(R.string.out_detected, n.get("game"), toSwitch ? "Wii U" : "Switch", target);
+            Matcher m = Pattern.compile("OK: (\\d+) converted, (\\d+) copied").matcher(n.log);
+            if (m.find()) r.stats = getString(R.string.res_stats,
+                    Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)));
+            r.path = folderPath;
+            r.folder = dest;
+            r.zip = zipUri;
+            r.zipName = zipName;
+            r.created.addAll(created);
+            return r;
         } finally {
             Saf.deleteLocal(work);
         }
@@ -500,6 +593,10 @@ public class MainActivity extends Activity {
 
     // ---------- Composants UI ----------
     private int px(int v) { return Math.round(v * dp); }
+
+    private void space(LinearLayout parent, int h) {
+        parent.addView(new View(this), new LinearLayout.LayoutParams(1, px(h)));
+    }
 
     private void space(int h) {
         content.addView(new View(this), new LinearLayout.LayoutParams(1, px(h)));
