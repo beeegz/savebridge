@@ -1,5 +1,12 @@
 name: build
-on: [push, workflow_dispatch]
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   desktop:
@@ -24,3 +31,12 @@ jobs:
         with:
           name: SaveBridge-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Publier la Release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk SaveBridge-${GITHUB_REF_NAME}.apk
+          gh release create "$GITHUB_REF_NAME" SaveBridge-${GITHUB_REF_NAME}.apk \
+            --title "SaveBridge $GITHUB_REF_NAME" \
+            --notes "Convertisseur de sauvegardes Zelda BotW Wii U <-> Switch. Installer l'APK (autoriser les sources inconnues)."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
